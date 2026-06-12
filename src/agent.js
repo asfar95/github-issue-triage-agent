@@ -62,7 +62,21 @@ IMPORTANT:
   2. Call list_repo_files on the relevant folder (e.g. "src") to find the right file
   3. Call get_file_content on the actual file to read the implementation
   4. Only then decide: is this a real bug or user error?
-- Never guess file paths — always list files first to confirm they exist`;
+- Never guess file paths — always list files first to confirm they exist
+
+ESCALATION — use escalate_to_human instead of guessing when you encounter:
+- Security or vulnerability reports (even potential ones) — a human must assess impact and disclosure
+- Privacy / data leak reports — same reason
+- Legal mentions (copyright, licensing, GDPR, DMCA) — requires legal judgement
+- Issues that span multiple teams or repos (e.g. "bug in the API and the dashboard") — human must coordinate
+- Genuine ambiguity after reading the code — if you've read the source and still can't tell if it's a bug or by design, escalate; do not flip a coin
+- Any issue where a wrong call could cause harm (e.g. closing a real security bug as "user error")
+
+When you escalate:
+- Write a clear one-sentence reason explaining what you found and why it's beyond your confidence
+- List the specific questions the human reviewer needs to answer
+- Do NOT post a regular comment AND escalate — use only escalate_to_human
+- Do NOT close the issue when escalating`;
 
 // ── Fix 1: Idempotency ─────────────────────────────────────────────────────────
 // Check if the bot has already triaged this issue to prevent double-processing.
@@ -166,9 +180,11 @@ async function runAgent(owner, repo, issueNumber) {
       const args = JSON.parse(toolCall.function.arguments);
       console.log(`  🔧 Calling tool: ${name}`, JSON.stringify(args));
 
-      // Inject BOT_MARKER into every comment so idempotency check works
-      if (name === 'post_comment') {
-        args.body = `${args.body}\n\n${BOT_MARKER}`;
+      // Inject BOT_MARKER so the idempotency check detects prior triage
+      if (name === 'post_comment' || name === 'escalate_to_human') {
+        if (!args.body?.includes(BOT_MARKER)) {
+          args.body = `${args.body}\n\n${BOT_MARKER}`;
+        }
       }
 
       let result;

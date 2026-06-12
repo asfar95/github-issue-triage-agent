@@ -76,6 +76,38 @@ async function closeIssue({ owner, repo, issue_number, reason }) {
   return { success: true };
 }
 
+async function escalateToHuman({ owner, repo, issue_number, reason, questions }) {
+  // Ensure the escalation label exists (create with amber colour if missing)
+  const labelName = 'needs-human-review';
+  const { data: existing } = await octokit.issues.listLabelsForRepo({ owner, repo, per_page: 100 });
+  if (!existing.find(l => l.name === labelName)) {
+    await octokit.issues.createLabel({
+      owner, repo,
+      name: labelName,
+      color: 'e4b429',
+      description: 'Flagged by triage agent — requires human judgement',
+    });
+  }
+
+  await octokit.issues.addLabels({ owner, repo, issue_number, labels: [labelName] });
+
+  const questionsBlock = questions && questions.length
+    ? `\n\n**Questions for the reviewer:**\n${questions.map(q => `- ${q}`).join('\n')}`
+    : '';
+
+  const body = `👋 I've reviewed this issue but flagged it for human review because:
+
+> ${reason}
+${questionsBlock}
+
+I've applied the \`needs-human-review\` label so a maintainer can take a look. I haven't closed or changed anything else.
+
+<!-- triage-agent -->`;
+
+  const { data: comment } = await octokit.issues.createComment({ owner, repo, issue_number, body });
+  return { success: true, comment_url: comment.html_url, label_applied: labelName };
+}
+
 // ── Tool registry (OpenAI function-calling format) ────────────────────────────
 
 const TOOL_DEFINITIONS = [
@@ -209,6 +241,31 @@ const TOOL_DEFINITIONS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'escalate_to_human',
+      description: 'Flag the issue for human review when you cannot confidently triage it. Applies a "needs-human-review" label and posts a comment explaining what the human reviewer should decide.',
+      parameters: {
+        type: 'object',
+        properties: {
+          owner:        { type: 'string' },
+          repo:         { type: 'string' },
+          issue_number: { type: 'number' },
+          reason: {
+            type: 'string',
+            description: 'One sentence explaining why this issue needs human judgement',
+          },
+          questions: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Specific questions the human reviewer should answer (e.g. "Is this a known limitation or a real bug?")',
+          },
+        },
+        required: ['owner', 'repo', 'issue_number', 'reason'],
+      },
+    },
+  },
 ];
 
 const TOOL_HANDLERS = {
@@ -218,6 +275,7 @@ const TOOL_HANDLERS = {
   add_labels:            addLabels,
   post_comment:          postComment,
   close_issue:           closeIssue,
+  escalate_to_human:     escalateToHuman,
   list_repo_files:       listRepoFiles,
   get_file_content:      getFileContent,
 };
