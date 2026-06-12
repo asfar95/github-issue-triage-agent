@@ -23,15 +23,19 @@ Issue opened
 
 The LLM decides the order and which tools to call. It won't ask for info already in the issue, and it reads source code before classifying "doesn't work" claims.
 
-## Demo
+## Screenshots
 
-**Bug report with full repro steps** → labelled `bug`, context-aware acknowledgement posted:
+### Bug report — labelled and acknowledged with code-aware comment
+<img src="screenshots/bug-report-triaged.png" alt="Agent labels a bug report and posts a comment referencing the actual source code" width="800">
 
-> "I've reviewed `src/index.js` — the login endpoint is defined as a POST request. The issue may be in the frontend handler. Could you share how the button's click event is wired up?"
+### Security report — escalated to human review
+<img src="screenshots/security-escalation.png" alt="Agent applies needs-human-review label and posts a structured escalation comment with specific questions" width="800">
 
-**Issue that's actually user error** → labelled `invalid`, explanation + correct usage posted, issue closed.
+### User error — explained and closed
+<img src="screenshots/user-error-closed.png" alt="Agent identifies user error, explains the correct usage, and closes the issue as not_planned" width="800">
 
-**Duplicate issue** → linked to existing issue, closed as `not_planned`.
+### CLI output — agent iterations in the terminal
+<img src="screenshots/cli-output.png" alt="Terminal showing agent loop: tool calls across 7 iterations including list_repo_files and get_file_content" width="700">
 
 ## Features
 
