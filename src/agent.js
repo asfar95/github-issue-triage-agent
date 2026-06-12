@@ -8,7 +8,7 @@ const BOT_MARKER = '<!-- triage-agent -->';
 
 const client = new OpenAI({
   apiKey: process.env.AI_API_KEY,
-  baseURL: 'https://api.groq.com/openai/v1',
+  baseURL: process.env.AI_BASE_URL || 'https://api.groq.com/openai/v1',
 });
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
