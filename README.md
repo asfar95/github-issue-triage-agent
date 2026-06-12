@@ -38,6 +38,7 @@ The LLM decides the order and which tools to call. It won't ask for info already
 - **7 issue classifications**: BUG, FEATURE, QUESTION, DUPLICATE, USER_ERROR, WONTFIX, NEEDS_MORE_INFO
 - **Reads source code**: calls `list_repo_files` → `get_file_content` before classifying vague "it doesn't work" issues
 - **Duplicate detection**: searches existing issues with extracted keywords
+- **Human escalation**: escalates security reports, privacy issues, legal mentions, and genuine ambiguity — never guesses on high-stakes decisions
 - **Idempotency**: skips issues it already triaged — safe to re-deliver webhooks
 - **Label pre-check**: silently filters out labels that don't exist in the repo
 - **Rate limit retry**: exponential backoff (2s/4s/8s) on Groq 429 responses
@@ -118,6 +119,7 @@ Then add the webhook to your GitHub repo:
 | `close_issue` | Closes as `completed` or `not_planned` |
 | `list_repo_files` | Lists files/folders (used before reading files) |
 | `get_file_content` | Reads source file content (capped at 3000 chars) |
+| `escalate_to_human` | Flags the issue for a maintainer — applies `needs-human-review` label, posts reason + questions |
 
 ## Environment Variables
 
