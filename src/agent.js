@@ -2,8 +2,8 @@ const OpenAI = require('openai');
 const { Octokit } = require('@octokit/rest');
 const { TOOL_DEFINITIONS, TOOL_HANDLERS } = require('./tools/github');
 
-const MAX_ITERATIONS = 10;
-const MAX_RETRIES = 3;
+const MAX_ITERATIONS = parseInt(process.env.AGENT_MAX_ITERATIONS || '10', 10);
+const MAX_RETRIES = parseInt(process.env.AGENT_MAX_RETRIES || '3', 10);
 const BOT_MARKER = '<!-- triage-agent -->';
 
 const client = new OpenAI({
@@ -50,9 +50,12 @@ When given an issue to triage, follow these steps:
    - WONTFIX: explain why the behaviour is intentional or out of scope, suggest a workaround if one exists
    - NEEDS_MORE_INFO: ask for the specific missing details (version, steps, error output, etc.)
 
-7. Close the issue if classified as: DUPLICATE, USER_ERROR, or WONTFIX
+7. Close the issue ONLY if classified as DUPLICATE, USER_ERROR, or WONTFIX.
+   NEVER close a BUG or FEATURE issue — they must stay open for the team to act on.
+   NEVER close a NEEDS_MORE_INFO issue — wait for the reporter to respond.
 
-IMPORTANT:
+IMPORTANT: Call ONE tool at a time. Never batch multiple tool calls in a single response. Wait to see the result of each tool call before deciding what to call next.
+
 - Always read the full issue body before writing the comment
 - Never ask for information that is already present in the issue
 - Every comment must reference the actual content of the issue — no generic templates
@@ -108,21 +111,37 @@ async function safeLabelHandler(args) {
   return TOOL_HANDLERS.add_labels({ owner, repo, issue_number, labels: valid });
 }
 
-// ── Fix 3: Rate limit retry ────────────────────────────────────────────────────
+// ── Fix 3: Context pruning ─────────────────────────────────────────────────────
+// Keeps the first user message (task) + the most recent MAX_CONTEXT messages to
+// cap token growth. Drops orphaned tool results at the boundary.
+const MAX_CONTEXT = 12;
+function pruneMessages(messages) {
+  if (messages.length <= MAX_CONTEXT + 1) return messages;
+  const head = messages.slice(0, 1);
+  let tail = messages.slice(-MAX_CONTEXT);
+  // Skip orphaned tool results that lost their preceding assistant call
+  let start = 0;
+  while (start < tail.length && tail[start].role === 'tool') start++;
+  return [...head, ...tail.slice(start)];
+}
+
+// ── Fix 4: Rate limit retry ────────────────────────────────────────────────────
 async function callLLMWithRetry(messages, attempt = 0) {
   try {
     return await client.chat.completions.create({
       model: MODEL,
-      messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
+      messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...pruneMessages(messages)],
       tools: TOOL_DEFINITIONS,
       tool_choice: 'auto',
+      parallel_tool_calls: false,
+      max_tokens: parseInt(process.env.AI_MAX_TOKENS || '2048', 10),
     });
   } catch (err) {
     const isRateLimit = err.status === 429 || err.message?.includes('rate limit');
     const isRetryable = isRateLimit || err.status === 503;
 
     if (isRetryable && attempt < MAX_RETRIES) {
-      const delay = Math.pow(2, attempt) * 2000; // 2s, 4s, 8s
+      const delay = [15000, 30000, 60000][attempt]; // 15s, 30s, 60s — suited for per-minute rate limits
       console.warn(`  ⏳ Rate limited — retrying in ${delay / 1000}s (attempt ${attempt + 1}/${MAX_RETRIES})`);
       await new Promise(r => setTimeout(r, delay));
       return callLLMWithRetry(messages, attempt + 1);
@@ -132,11 +151,11 @@ async function callLLMWithRetry(messages, attempt = 0) {
 }
 
 // ── Agent loop ─────────────────────────────────────────────────────────────────
-async function runAgent(owner, repo, issueNumber) {
+async function runAgent(owner, repo, issueNumber, { skipIdempotency = false } = {}) {
   console.log(`\n🤖 Agent starting triage for ${owner}/${repo}#${issueNumber}`);
 
-  // Idempotency check
-  if (await alreadyTriaged(owner, repo, issueNumber)) {
+  // Idempotency check — skipped on reopened events so re-triggering works
+  if (!skipIdempotency && await alreadyTriaged(owner, repo, issueNumber)) {
     console.log(`⏭️  Issue #${issueNumber} already triaged — skipping`);
     return { success: true, skipped: true };
   }
@@ -145,8 +164,19 @@ async function runAgent(owner, repo, issueNumber) {
     { role: 'user', content: `Triage issue #${issueNumber} in the ${owner}/${repo} repository.` },
   ];
 
-  // Override add_labels with the safe version
-  const handlers = { ...TOOL_HANDLERS, add_labels: safeLabelHandler };
+  // Override handlers: safe labeling + guard against closing actionable issues
+  const safeCloseHandler = async (args) => {
+    const { data: issue } = await octokit.issues.get({ owner: args.owner, repo: args.repo, issue_number: args.issue_number });
+    const labels = issue.labels.map(l => l.name.toLowerCase());
+    const blockedLabels = ['bug', 'enhancement', 'feature'];
+    const blocked = blockedLabels.find(l => labels.includes(l));
+    if (blocked) {
+      console.warn(`     ⚠️  Blocked close_issue — issue has label "${blocked}" (bugs/features must stay open)`);
+      return { success: false, reason: `Cannot close a "${blocked}" issue — it must stay open for the team to fix.` };
+    }
+    return TOOL_HANDLERS.close_issue(args);
+  };
+  const handlers = { ...TOOL_HANDLERS, add_labels: safeLabelHandler, close_issue: safeCloseHandler };
 
   let iterations = 0;
 
