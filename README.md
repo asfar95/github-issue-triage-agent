@@ -35,7 +35,7 @@ The LLM decides the order and which tools to call. It won't ask for info already
 <img src="screenshots/user-error-closed.png" alt="Agent identifies user error, explains the correct usage, and closes the issue as not_planned" width="800">
 
 ### CLI output — agent iterations in the terminal
-<img src="screenshots/cli-output.png" alt="Terminal showing agent loop: tool calls across 7 iterations including list_repo_files and get_file_content" width="700">
+<img src="screenshots/cli-output.svg" alt="Terminal showing agent loop: tool calls across 5 iterations including list_repo_files and get_file_content" width="780">
 
 ## Features
 
