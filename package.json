@@ -12,5 +12,8 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "openai": "^4.52.0"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2"
   }
 }

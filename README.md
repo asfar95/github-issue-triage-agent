@@ -26,16 +26,16 @@ The LLM decides the order and which tools to call. It won't ask for info already
 ## Screenshots
 
 ### Bug report — labelled and acknowledged with code-aware comment
-<img src="screenshots/bug-report-triaged.svg" alt="Agent labels a bug report and posts a comment referencing the actual source code" width="800">
+<img src="screenshots/bug-report-triaged.png" alt="Agent labels a bug report and posts a comment referencing the actual source code" width="800">
 
 ### Security report — escalated to human review
-<img src="screenshots/security-escalation.svg" alt="Agent applies needs-human-review label and posts a structured escalation comment with specific questions" width="800">
+<img src="screenshots/security-escalation.png" alt="Agent applies needs-human-review label and posts a structured escalation comment with specific questions" width="800">
 
 ### User error — explained and closed
-<img src="screenshots/user-error-closed.svg" alt="Agent identifies user error, explains the correct usage, and closes the issue as not_planned" width="800">
+<img src="screenshots/user-error-closed.png" alt="Agent identifies user error, explains the correct usage, and closes the issue as not_planned" width="800">
 
 ### CLI output — agent iterations in the terminal
-<img src="screenshots/cli-output.svg" alt="Terminal showing agent loop: tool calls across 5 iterations including list_repo_files and get_file_content" width="780">
+<img src="screenshots/cli-output.png" alt="Terminal showing agent loop: tool calls across 5 iterations including list_repo_files and get_file_content" width="780">
 
 ## Features
 
