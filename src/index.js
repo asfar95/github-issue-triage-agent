@@ -2,20 +2,26 @@ require('dotenv').config();
 const express = require('express');
 const crypto = require('crypto');
 const http = require('http');
+const https = require('https');
 const { runAgent } = require('./agent');
 
-const ROUTER_PORT = parseInt(process.env.ROUTER_PORT || '3000', 10);
+// Post a JSON signal to the webhook-router.
+// No-ops silently if TRIAGE_DONE_URL is not set (standalone mode).
+function signalRouter(data) {
+  const url = process.env.TRIAGE_DONE_URL;
+  if (!url) return Promise.resolve();
 
-function signalTriageDone(owner, repo, issueNumber) {
-  const body = JSON.stringify({ owner, repo, issueNumber });
+  const body = JSON.stringify(data);
+  const target = new URL(url);
+  const transport = target.protocol === 'https:' ? https : http;
+
   return new Promise((resolve) => {
-    const req = http.request({
-      hostname: 'localhost', port: ROUTER_PORT,
-      path: '/internal/triage-done', method: 'POST',
+    const req = transport.request(target, {
+      method: 'POST',
       headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) },
     }, res => { res.resume(); resolve(); });
     req.on('error', err => {
-      console.warn(`  ⚠️  Could not signal triage-done: ${err.message}`);
+      console.warn(`  ⚠️  Router signal failed: ${err.message}`);
       resolve();
     });
     req.write(body);
@@ -82,7 +88,7 @@ app.post('/webhook', async (req, res) => {
     } catch (err) {
       console.error('❌ Agent error:', err.message);
     } finally {
-      await signalTriageDone(owner, repo, issueNumber);
+      await signalRouter({ owner, repo, issueNumber });
     }
   })();
 });
