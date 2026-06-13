@@ -94,7 +94,7 @@ PORT=3002
 ### 3. Test with CLI
 
 ```bash
-node src/cli.js asfar95/sample-app 1
+node src/cli.js asfar95/ai-agent-playground 1
 ```
 
 ### 4. Run the webhook server
