@@ -1,7 +1,27 @@
 require('dotenv').config();
 const express = require('express');
 const crypto = require('crypto');
+const http = require('http');
 const { runAgent } = require('./agent');
+
+const ROUTER_PORT = parseInt(process.env.ROUTER_PORT || '3000', 10);
+
+function signalTriageDone(owner, repo, issueNumber) {
+  const body = JSON.stringify({ owner, repo, issueNumber });
+  return new Promise((resolve) => {
+    const req = http.request({
+      hostname: 'localhost', port: ROUTER_PORT,
+      path: '/internal/triage-done', method: 'POST',
+      headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) },
+    }, res => { res.resume(); resolve(); });
+    req.on('error', err => {
+      console.warn(`  ⚠️  Could not signal triage-done: ${err.message}`);
+      resolve();
+    });
+    req.write(body);
+    req.end();
+  });
+}
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -55,10 +75,16 @@ app.post('/webhook', async (req, res) => {
   // Acknowledge immediately, triage async
   res.status(200).json({ message: 'Triage started', issue: issueNumber });
 
-  // Skip idempotency on reopened so re-triggering works cleanly
-  runAgent(owner, repo, issueNumber, { skipIdempotency: isReopen }).catch(err =>
-    console.error('❌ Agent error:', err.message)
-  );
+  // Always signal triage-done (even on failure) so the router can unblock autofix.
+  (async () => {
+    try {
+      await runAgent(owner, repo, issueNumber, { skipIdempotency: isReopen });
+    } catch (err) {
+      console.error('❌ Agent error:', err.message);
+    } finally {
+      await signalTriageDone(owner, repo, issueNumber);
+    }
+  })();
 });
 
 app.get('/health', (_, res) => res.json({ status: 'ok' }));
