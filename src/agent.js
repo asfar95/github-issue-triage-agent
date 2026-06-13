@@ -54,8 +54,6 @@ When given an issue to triage, follow these steps:
    NEVER close a BUG or FEATURE issue — they must stay open for the team to act on.
    NEVER close a NEEDS_MORE_INFO issue — wait for the reporter to respond.
 
-IMPORTANT: Call ONE tool at a time. Never batch multiple tool calls in a single response. Wait to see the result of each tool call before deciding what to call next.
-
 - Always read the full issue body before writing the comment
 - Never ask for information that is already present in the issue
 - Every comment must reference the actual content of the issue — no generic templates
