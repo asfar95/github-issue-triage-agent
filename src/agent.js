@@ -50,9 +50,11 @@ When given an issue to triage, follow these steps:
    - WONTFIX: explain why the behaviour is intentional or out of scope, suggest a workaround if one exists
    - NEEDS_MORE_INFO: ask for the specific missing details (version, steps, error output, etc.)
 
-7. Close the issue ONLY if classified as DUPLICATE, USER_ERROR, or WONTFIX.
+7. Close the issue ONLY if classified as USER_ERROR or WONTFIX.
    NEVER close a BUG or FEATURE issue — they must stay open for the team to act on.
    NEVER close a NEEDS_MORE_INFO issue — wait for the reporter to respond.
+   For DUPLICATE: add the label and post a comment linking to the existing issue, but do NOT close it — leave that for a human to verify.
+   When closing, always use reason "not_planned".
 
 - Always read the full issue body before writing the comment
 - Never ask for information that is already present in the issue
@@ -166,11 +168,11 @@ async function runAgent(owner, repo, issueNumber, { skipIdempotency = false } = 
   const safeCloseHandler = async (args) => {
     const { data: issue } = await octokit.issues.get({ owner: args.owner, repo: args.repo, issue_number: args.issue_number });
     const labels = issue.labels.map(l => l.name.toLowerCase());
-    const blockedLabels = ['bug', 'enhancement', 'feature'];
+    const blockedLabels = ['bug', 'enhancement', 'feature', 'duplicate'];
     const blocked = blockedLabels.find(l => labels.includes(l));
     if (blocked) {
-      console.warn(`     ⚠️  Blocked close_issue — issue has label "${blocked}" (bugs/features must stay open)`);
-      return { success: false, reason: `Cannot close a "${blocked}" issue — it must stay open for the team to fix.` };
+      console.warn(`     ⚠️  Blocked close_issue — issue has label "${blocked}" (leave for human to close)`);
+      return { success: false, reason: `Cannot auto-close a "${blocked}" issue — leave it for a human to verify and close.` };
     }
     return TOOL_HANDLERS.close_issue(args);
   };

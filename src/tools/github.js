@@ -37,19 +37,21 @@ async function getIssueDetails({ owner, repo, issue_number }) {
   };
 }
 
-async function searchSimilarIssues({ owner, repo, query }) {
+async function searchSimilarIssues({ owner, repo, query, exclude_number }) {
   const { data } = await octokit.search.issuesAndPullRequests({
     q: `${query} repo:${owner}/${repo} is:issue`,
     per_page: 5,
     sort: 'relevance',
   });
-  return data.items.map(i => ({
-    number: i.number,
-    title: i.title,
-    state: i.state,
-    url: i.html_url,
-    created_at: i.created_at,
-  }));
+  return data.items
+    .filter(i => i.number !== exclude_number)
+    .map(i => ({
+      number: i.number,
+      title: i.title,
+      state: i.state,
+      url: i.html_url,
+      created_at: i.created_at,
+    }));
 }
 
 async function getRepoLabels({ owner, repo }) {
@@ -163,13 +165,14 @@ const TOOL_DEFINITIONS = [
     type: 'function',
     function: {
       name: 'search_similar_issues',
-      description: 'Search for similar or duplicate issues in the repository',
+      description: 'Search for similar or duplicate issues in the repository. Always pass exclude_number to avoid matching the current issue against itself.',
       parameters: {
         type: 'object',
         properties: {
-          owner: { type: 'string' },
-          repo:  { type: 'string' },
-          query: { type: 'string', description: 'Search keywords extracted from the issue title/body' },
+          owner:          { type: 'string' },
+          repo:           { type: 'string' },
+          query:          { type: 'string', description: 'Search keywords extracted from the issue title/body' },
+          exclude_number: { type: 'number', description: 'Issue number to exclude from results (the current issue being triaged)' },
         },
         required: ['owner', 'repo', 'query'],
       },
@@ -201,7 +204,7 @@ const TOOL_DEFINITIONS = [
           owner:        { type: 'string' },
           repo:         { type: 'string' },
           issue_number: { type: 'number' },
-          labels:       { type: 'array', items: { type: 'string' }, description: 'Label names to add' },
+          labels:       { type: 'array', items: { type: 'string' }, description: 'Label names to add as an array, e.g. ["bug"] or ["enhancement", "priority-high"]' },
         },
         required: ['owner', 'repo', 'issue_number', 'labels'],
       },
@@ -235,7 +238,7 @@ const TOOL_DEFINITIONS = [
           owner:        { type: 'string' },
           repo:         { type: 'string' },
           issue_number: { type: 'number' },
-          reason:       { type: 'string', enum: ['completed', 'not_planned'], description: 'Reason for closing' },
+          reason:       { type: 'string', enum: ['completed', 'not_planned'], description: 'Use "not_planned" for duplicates, spam, user errors, and wontfix. Use "completed" only when work is done.' },
         },
         required: ['owner', 'repo', 'issue_number', 'reason'],
       },
