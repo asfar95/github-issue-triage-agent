@@ -5,6 +5,15 @@ const http = require('http');
 const https = require('https');
 const { runAgent } = require('./agent');
 
+// Fail fast — missing secrets cause cryptic runtime errors, not a clean startup message
+const REQUIRED_ENV = ['GITHUB_TOKEN', 'AI_API_KEY', 'GITHUB_WEBHOOK_SECRET'];
+for (const key of REQUIRED_ENV) {
+  if (!process.env[key]) {
+    console.error(`❌ Fatal: ${key} is not set. Add it to .env and restart.`);
+    process.exit(1);
+  }
+}
+
 // Post a JSON signal to the webhook-router.
 // No-ops silently if TRIAGE_DONE_URL is not set (standalone mode).
 function signalRouter(data) {
@@ -33,10 +42,8 @@ const app = express();
 const PORT = process.env.PORT || 3002;
 
 function verifySignature(rawBody, signature) {
-  const secret = process.env.GITHUB_WEBHOOK_SECRET;
-  if (!secret) return true;
   if (!signature) return false;
-  const digest = 'sha256=' + crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+  const digest = 'sha256=' + crypto.createHmac('sha256', process.env.GITHUB_WEBHOOK_SECRET).update(rawBody).digest('hex');
   return crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(signature));
 }
 
@@ -71,9 +78,14 @@ app.post('/webhook', async (req, res) => {
     return res.status(200).json({ message: `Ignored action: ${action}` });
   }
 
-  const owner = repository.owner.login;
-  const repo = repository.name;
-  const issueNumber = issue.number;
+  const owner = repository?.owner?.login;
+  const repo = repository?.name;
+  const issueNumber = issue?.number;
+
+  if (!owner || !repo || !issueNumber) {
+    return res.status(400).json({ error: 'Malformed webhook: missing owner, repo, or issue number' });
+  }
+
   const isReopen = action === 'reopened';
 
   console.log(`\n📬 Issue ${isReopen ? 'reopened' : 'opened'}: ${owner}/${repo}#${issueNumber} — "${issue.title}"`);
@@ -86,7 +98,7 @@ app.post('/webhook', async (req, res) => {
     try {
       await runAgent(owner, repo, issueNumber, { skipIdempotency: isReopen });
     } catch (err) {
-      console.error('❌ Agent error:', err.message);
+      console.error(`❌ Agent error on ${owner}/${repo}#${issueNumber}: ${err.message}`);
     } finally {
       await signalRouter({ owner, repo, issueNumber });
     }
@@ -95,8 +107,16 @@ app.post('/webhook', async (req, res) => {
 
 app.get('/health', (_, res) => res.json({ status: 'ok' }));
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`\n🤖 GitHub Issue Triage Agent`);
   console.log(`   Webhook : http://localhost:${PORT}/webhook`);
   console.log(`   Health  : http://localhost:${PORT}/health\n`);
 });
+
+function shutdown(signal) {
+  console.log(`\n⏳ ${signal} received — shutting down gracefully`);
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(1), 30_000).unref();
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT',  () => shutdown('SIGINT'));

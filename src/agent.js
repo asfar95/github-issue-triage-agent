@@ -1,18 +1,14 @@
-const OpenAI = require('openai');
 const { Octokit } = require('@octokit/rest');
 const { TOOL_DEFINITIONS, TOOL_HANDLERS } = require('./tools/github');
+const { chatCompletions, USE_ANTHROPIC } = require('./aiClient');
 
-const MAX_ITERATIONS = parseInt(process.env.AGENT_MAX_ITERATIONS || '10', 10);
+const MAX_ITERATIONS = parseInt(process.env.AGENT_MAX_ITERATIONS || '15', 10);
 const MAX_RETRIES = parseInt(process.env.AGENT_MAX_RETRIES || '3', 10);
 const BOT_MARKER = '<!-- triage-agent -->';
 
-const client = new OpenAI({
-  apiKey: process.env.AI_API_KEY,
-  baseURL: process.env.AI_BASE_URL || 'https://api.groq.com/openai/v1',
-});
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
-const MODEL = process.env.AI_MODEL || 'llama-3.3-70b-versatile';
+const MODEL = process.env.AI_MODEL || (USE_ANTHROPIC ? 'claude-haiku-4-5' : 'llama-3.3-70b-versatile');
 
 const SYSTEM_PROMPT = `You are an expert GitHub issue triage agent. Your job is to help maintainers by automatically triaging new issues.
 
@@ -128,12 +124,11 @@ function pruneMessages(messages) {
 // ── Fix 4: Rate limit retry ────────────────────────────────────────────────────
 async function callLLMWithRetry(messages, attempt = 0) {
   try {
-    return await client.chat.completions.create({
-      model: MODEL,
-      messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...pruneMessages(messages)],
-      tools: TOOL_DEFINITIONS,
-      tool_choice: 'auto',
-      parallel_tool_calls: false,
+    return await chatCompletions({
+      model:      MODEL,
+      system:     SYSTEM_PROMPT,
+      messages:   pruneMessages(messages),
+      tools:      TOOL_DEFINITIONS,
       max_tokens: parseInt(process.env.AI_MAX_TOKENS || '2048', 10),
     });
   } catch (err) {
